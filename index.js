@@ -1,5 +1,6 @@
 "use strict";
 
+const async = require('async');
 const ns = require('node-static');
 const fs = require('fs');
 const http = require('http');
@@ -96,17 +97,97 @@ function Notebook(root) {
 
 var $notebook = new Notebook(notebookRoot);
 
+function findChildren(req, res) {
+	function _respond(items) {
+		var json = JSON.stringify(items);
+		res.writeHead(200, {
+			'Content-Type': 'json',
+			'Content-Length': json.length
+		});
+		res.end(json, 'utf8');
+	}
+
+	function _getChildren(page, cb) {
+		var pagePath = $notebook.root + page;
+		fs.readdir(pagePath, function(err, files) {
+			if (err) return cb(err);
+
+			files = files.map(function(f) {
+				return {
+					path: page + f + '/',
+					basename: f
+				};
+			}).filter(function(f) {
+				return !f.path.match(/\/_/);
+			});
+
+			async.map(files, function(f, cb) {
+				fs.stat($notebook.root + f.path, function(err, stat) {
+					if (err) return cb(null, null);
+					f.stat = stat;
+					return cb(null, f);
+				});
+			}, function(err, files) {
+				files = files.filter(function(f) {
+					return f && f.stat.isDirectory();
+				});
+				async.map(files, function(f, cb) {
+					_getTitle(f.path, null, function(title) {
+						f.title = title;
+						return cb(null, f);
+					});
+				}, function(err, files) {
+					_respond(files.map(function(f) {
+						return {
+							title: f.title,
+							path: f.path
+						}
+					}));
+				});
+			});
+		});
+	}
+
+	function _getTitle(page, defaultTitle, cb) {
+		var metaPath = $notebook.root + page + 'meta.info';
+		fs.readFile(metaPath, 'utf8', function(err, meta) {
+			if (!err && meta.match(/^title:\s+([^\r\n$]+)/)) {
+				cb(RegExp.$1);
+			} else if (!defaultTitle) {
+				var chunks = page.replace(/\/+$/g, '').split('/');
+				cb(chunks.pop());
+			} else {
+				cb(defaultTitle);
+			}
+		});
+	}
+
+	var parent = req.parsedUrl.search.substring(1);
+	if (parent.length === 0) {
+		_getTitle('/', 'Notebook', function(title) {
+			_respond([{title: title, path: '/'}]);
+		});
+	} else {
+		_getChildren(parent, function(err, children) {
+			_response(children);
+		});
+	}
+}
+
 http.createServer((req, res) => {
     let requestUrl = parseUrl(req.url);
+    req.parsedUrl = requestUrl;
 
     if (requestUrl.path === '/favicon.ico') {
         return _error(404, 'Not Found');
     }
 
-    if (requestUrl.path === '/') {
+    if (requestUrl.pathname === '/') {
     	return staticFiles.templates.serveFile('/ui.htm', 200, {}, req, res);
-	} else if (requestUrl.path.match(/^\/assets/)) {
+	} else if (requestUrl.pathname.match(/^\/assets/)) {
 		return staticFiles.pub.serve(req, res);
+	} else if (requestUrl.pathname.match(/^\/children$/)) {
+		return findChildren(req, res);
 	}
 
     let requestPath = requestUrl.path.replace(/\/+/g, '/');
