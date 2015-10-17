@@ -4,11 +4,18 @@
   "description": "",
   "main": "index.js",
   "dependencies": {
-    "mime": "^1.3.4"
+    "glob": "^5.0.15",
+    "marked": "^0.3.5",
+    "mime": "^1.3.4",
+    "minimatch": "^3.0.0",
+    "node-static": "^0.7.7"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "spinup": "^1.1.7"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "spinup"
   },
   "repository": {
     "type": "git",

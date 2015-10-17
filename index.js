@@ -1,5 +1,6 @@
 "use strict";
 
+const ns = require('node-static');
 const fs = require('fs');
 const http = require('http');
 const mime = require('mime');
@@ -9,6 +10,11 @@ const glob = require('glob');
 const parseUrl = require('url').parse;
 const util = require('util');
 const notebookRoot = "/Users/jason/Dropbox/notebook";
+
+const staticFiles = {
+	templates: new ns.Server(__dirname + '/tpl'),
+	pub: new ns.Server(__dirname + '/public')
+};
 
 function htmlResponse(res, html) {
     res.setHeader('Content-Type', 'text/html');
@@ -96,6 +102,12 @@ http.createServer((req, res) => {
     if (requestUrl.path === '/favicon.ico') {
         return _error(404, 'Not Found');
     }
+
+    if (requestUrl.path === '/') {
+    	return staticFiles.templates.serveFile('/ui.htm', 200, {}, req, res);
+	} else if (requestUrl.path.match(/^\/assets/)) {
+		return staticFiles.pub.serve(req, res);
+	}
 
     let requestPath = requestUrl.path.replace(/\/+/g, '/');
 

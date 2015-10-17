@@ -1,1 +1,5 @@
 node_modules
+.sass-cache
+public/assets/bundle.js
+public/assets/main.css
+public/assets/main.css.map

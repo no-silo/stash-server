@@ -1,0 +1,2 @@
+watchify -o public/assets/bundle.js frontend/lib/main.js
+scss --watch frontend/scss/main.scss:public/assets/main.css
