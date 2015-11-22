@@ -1,7 +1,7 @@
 "use strict";
 
+const appy = require('appy-bird');
 const async = require('async');
-const ns = require('node-static');
 const fs = require('fs');
 const http = require('http');
 const mime = require('mime');
@@ -12,22 +12,15 @@ const parseUrl = require('url').parse;
 const util = require('util');
 const notebookRoot = "/Users/jason/Dropbox/notebook";
 
-const staticFiles = {
-	templates: new ns.Server(__dirname + '/tpl'),
-	pub: new ns.Server(__dirname + '/public')
+const types = require('./lib/types');
+const extensions = {
+    gif     : 'gif',
+    htm     : 'html',
+    html    : 'html',
+    jpeg    : 'jpeg',
+    jpg     : 'jpeg',
+    png     : 'png'
 };
-
-function htmlResponse(res, html) {
-    res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Length', html.length);
-    res.end(html, 'utf8');
-}
-
-function _makeImageConverter(targetFormat) {
-    return function(req, res) {
-        return htmlResponse(res, '<h3>converting image to: ' + targetFormat + '</h3>');
-    }
-}
 
 function translator(sourceType, targetType) {
     while (sourceType) {
@@ -40,56 +33,59 @@ function translator(sourceType, targetType) {
     return null;
 }
 
-var types = {
-    gif: {
-        parent: 'image',
-        mimeType: 'image/gif'
-    },
-    html: {
-        mimeType: 'text/html'
-    },
-    image: {
-        abstract: true,
-        convert: {
-            html: function(ctx, req, res) {
-                var html = 
-                    '<div style="background-color:black">' +
-                        '<img src="' + req.fileUrl() + '">' +
-                    '</div>';
-                return htmlResponse(res, html);
-            },
-            jpeg: _makeImageConverter('jpeg'),
-            png: _makeImageConverter('png')
-        }
-    },
-    jpeg: {
-        parent: 'image',
-        mimeType: 'image/jpeg'
-    },
-    md: {
-    	mimeType: 'text/markdown; charset=UTF-8',
-    	convert: {
-    		html: function(ctx, req, res) {
-    			var md = fs.readFileSync(req.sourcePath(), 'utf8');
-    			var html = marked(md);
-    			return htmlResponse(res, html);
-    		}
-    	}
-    },
-    png: {
-        parent: 'image',
-        mimeType: 'image/png'
-    }
-}
-
-var extensions = {
-    gif     : 'gif',
-    htm     : 'html',
-    html    : 'html',
-    jpeg    : 'jpeg',
-    jpg     : 'jpeg',
-    png     : 'png'
-};
+appy({
+	routes: [
+		{
+			path: /^\/assets\/[^$]+$/,
+			directory: __dirname + '/public'
+		},
+		{
+			path: '/children',
+			handler: function(req, params, r, res) {
+				return findChildren(req)
+					.then(function(items) {
+						return r.json(items);
+					}, function(err) {
+						return r.status(500);
+					});
+			}
+		},
+		{
+			path: '/',
+			file: __dirname + '/tpl/ui.htm'
+		},
+		{
+			path: /^.*$/,
+			handler: function(req, params, r, res) {
+				let requestPath = req.uri.path.replace(/\/+/g, '/');
+				return new Promise(function(resolve, reject) {
+					resolvePage($notebook, requestPath, function(err, pfr) {
+						if (err) {
+							if (err.type === 'redirect') {
+								return resolve(r.redirect(err.path));
+							} else if (err.type === 'notfound') {
+								return reject(404);
+							} else {
+								return reject(500);
+							}
+						}
+						console.log(pfr);
+						if (pfr.translationRequired()) {
+							var t = translator(pfr.sourceType, pfr.requestedType);
+							if (t) {
+				                resolve(t(req, params, r, res));
+				            } else {
+				            	resolve(r.text(406, 'No conversion available from ' + pfr.sourceType + ' -> ' + pfr.requestedType));
+				            }
+						} else {
+							resolve(r.file(pfr.sourcePath(), types[pfr.sourceType].mimeType));
+						}
+					});
+				});
+			}
+		}
+	]
+}).listen(8080);
 
 function Notebook(root) {
     this.root = root;
@@ -97,16 +93,8 @@ function Notebook(root) {
 
 var $notebook = new Notebook(notebookRoot);
 
-function findChildren(req, res) {
-	function _respond(items) {
-		var json = JSON.stringify(items);
-		res.writeHead(200, {
-			'Content-Type': 'json',
-			'Content-Length': json.length
-		});
-		res.end(json, 'utf8');
-	}
-
+function findChildren(req) {
+	
 	function _getChildren(page, cb) {
 		var pagePath = $notebook.root + page;
 		fs.readdir(pagePath, function(err, files) {
@@ -137,7 +125,7 @@ function findChildren(req, res) {
 						return cb(null, f);
 					});
 				}, function(err, files) {
-					_respond(files.map(function(f) {
+					cb(null, files.map(function(f) {
 						return {
 							title: f.title,
 							path: f.path
@@ -162,84 +150,19 @@ function findChildren(req, res) {
 		});
 	}
 
-	var parent = req.parsedUrl.search.substring(1);
-	if (parent.length === 0) {
-		_getTitle('/', 'Notebook', function(title) {
-			_respond([{title: title, path: '/'}]);
-		});
-	} else {
-		_getChildren(parent, function(err, children) {
-			_response(children);
-		});
-	}
+	return new Promise(function(resolve, reject) {
+		var parent = req.uri.search.substring(1);
+		if (parent.length === 0) {
+			_getTitle('/', 'Notebook', function(title) {
+				resolve([{title: title, path: '/'}]);
+			});
+		} else {
+			_getChildren(parent, function(err, children) {
+				resolve(children);
+			});
+		}
+	});
 }
-
-http.createServer((req, res) => {
-    let requestUrl = parseUrl(req.url);
-    req.parsedUrl = requestUrl;
-
-    if (requestUrl.path === '/favicon.ico') {
-        return _error(404, 'Not Found');
-    }
-
-    if (requestUrl.pathname === '/') {
-    	return staticFiles.templates.serveFile('/ui.htm', 200, {}, req, res);
-	} else if (requestUrl.pathname.match(/^\/assets/)) {
-		return staticFiles.pub.serve(req, res);
-	} else if (requestUrl.pathname.match(/^\/children$/)) {
-		return findChildren(req, res);
-	}
-
-    let requestPath = requestUrl.path.replace(/\/+/g, '/');
-
-    resolvePage($notebook, requestPath, (err, pfr) => {
-        if (err) {
-        	if (err.type === 'redirect') {
-        		return _redirect(err.path);
-        	} else if (err.type === 'notfound') {
-        		return _error(404, 'Not Found');
-        	} else {
-        		return _error(500, 'Internal Server Error');
-        	}
-        }
-        console.log(pfr);
-        if (pfr.translationRequired()) {
-            var t = translator(pfr.sourceType, pfr.requestedType);
-            if (t) {
-                return t(null, pfr, res);
-            } else {
-                let text = 'No conversion available from ' + pfr.sourceType + ' -> ' + pfr.requestedType;
-                res.setHeader('Content-Type', 'text/plain');
-                res.setHeader('Content-Length', text.length);
-                res.end(text, 'utf8');
-            }
-        } else {
-            fs.stat(pfr.sourcePath(), function(err, stat) {
-                if (err) throw new Error("wtf");
-                res.setHeader('Content-Type', types[pfr.sourceType].mimeType);
-                res.setHeader('Content-Length', stat.size);
-                fs.createReadStream(pfr.sourcePath()).pipe(res);
-            });
-        }
-    });
-
-	function _error(status, message) {
-		let responseText = message;
-		res.writeHead(status, {
-			'Content-Type': 'text/plain',
-			'Content-Length': responseText.length
-		});
-		res.end(responseText, 'utf8');
-	}
-
-	function _redirect(path) {
-		res.writeHead(302, {
-			'Content-Length': 0,
-			'Location': path
-		});
-		res.end();
-	}
-}).listen(8080);
 
 function resolvePage(notebook, requestPath, cb) {
 	var match = _parseRequestPath(requestPath);
