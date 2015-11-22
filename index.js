@@ -6,7 +6,6 @@ const fs = require('fs');
 const http = require('http');
 const mime = require('mime');
 const path = require('path');
-const marked = require('marked');
 const glob = require('glob');
 const parseUrl = require('url').parse;
 const util = require('util');
@@ -73,7 +72,7 @@ appy({
 						if (pfr.translationRequired()) {
 							var t = translator(pfr.sourceType, pfr.requestedType);
 							if (t) {
-				                resolve(t(req, params, r, res));
+				                resolve(t(pfr, req, r, res));
 				            } else {
 				            	resolve(r.text(406, 'No conversion available from ' + pfr.sourceType + ' -> ' + pfr.requestedType));
 				            }
