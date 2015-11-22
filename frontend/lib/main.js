@@ -3,7 +3,7 @@ var ev = require('dom-bind');
 window.init = function() {
 	var sidebar = document.querySelector('.sidebar');
 
-	fetch('/children?', {
+	fetch('/_children?parent=', {
 		method: 'get'
 	}).then(function(response) {
 		response.json().then(function(children) {
@@ -18,7 +18,7 @@ window.init = function() {
 		busy = true;
 		var li = evt.delegateTarget.parentNode;
 		if (li.childNodes.length > 1) return;
-		fetch('/children?' + evt.delegateTarget.getAttribute('data-page'), {
+		fetch('/_children?parent=' + evt.delegateTarget.getAttribute('data-page'), {
 			method: 'get'
 		}).then(function(response) {
 			busy = false;

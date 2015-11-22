@@ -40,9 +40,9 @@ appy({
 			directory: __dirname + '/public'
 		},
 		{
-			path: '/children',
+			path: '/_children',
 			handler: function(req, params, r, res) {
-				return findChildren(req)
+				return findChildren(req.query.parent)
 					.then(function(items) {
 						return r.json(items);
 					}, function(err) {
@@ -93,7 +93,7 @@ function Notebook(root) {
 
 var $notebook = new Notebook(notebookRoot);
 
-function findChildren(req) {
+function findChildren(parent) {
 	
 	function _getChildren(page, cb) {
 		var pagePath = $notebook.root + page;
@@ -151,7 +151,6 @@ function findChildren(req) {
 	}
 
 	return new Promise(function(resolve, reject) {
-		var parent = req.uri.search.substring(1);
 		if (parent.length === 0) {
 			_getTitle('/', 'Notebook', function(title) {
 				resolve([{title: title, path: '/'}]);
